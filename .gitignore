@@ -1,0 +1,19 @@
+# Local cross-toolchain (vbcc + vasm + vlink + NDK + downloads).
+# Reproducible by re-running the install steps in env.sh / README.
+toolchain/
+
+# Built Amiga executables (Hunk binaries) and intermediates.
+Gradient
+counter
+gradient
+*.o
+*.asm
+
+# vbcc/vlink artefacts
+*.lst
+*.map
+
+# Editor / OS noise
+*~
+*.swp
+.DS_Store
