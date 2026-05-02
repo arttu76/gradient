@@ -1,5 +1,7 @@
 # Copper Gradient utility — Amiga side
 
+![Gradient editor on Workbench, showing the gradient on the desktop behind it](screenshot.png)
+
 A Workbench-friendly utility that drives one or more WB color registers from
 a copperlist, painting smooth vertical gradients across the desktop. Built
 for Kickstart/Workbench 3.x on Amiga 600 (ECS, 68000); should work on any
