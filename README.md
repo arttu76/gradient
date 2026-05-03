@@ -18,8 +18,8 @@ disable/enable its effect, or remove it cleanly through the Exchange app.
 | File                              | What it is                              |
 | --------------------------------- | --------------------------------------- |
 | `Gradient`                        | The executable. Hunk format.            |
-| `ENV:Gradient.prefs`              | Live settings (read at every launch).   |
-| `ENVARC:Gradient.prefs`           | Persistent copy (survives reboot).      |
+| `ENV:Gradient.prefs`              | Live settings (read at every launch). ~290 bytes binary. |
+| `ENVARC:Gradient.prefs`           | Persistent copy. The system copies `ENVARC:` → `ENV:` early in boot, before `User-Startup` runs. |
 | Public broker `"Gradient"`        | Created at runtime, listed in Exchange. |
 
 You don't have to create the prefs files; they're written automatically
@@ -138,28 +138,7 @@ editor doesn't quit the program — see the next section for that.
 
 ---
 
-## 4. Run as a Commodity at startup
-
-This is the right way to have the Gradient back after every reboot.
-
-### 4.1 Add the line to `S:User-Startup`
-
-Open `S:User-Startup` in any text editor (`ed`, `MEmacs`, etc.) and add at
-the bottom:
-
-```
-Run >NIL: C:Gradient BACKGROUND
-```
-
-`BACKGROUND` makes it skip opening the editor window on launch — the
-broker is registered, the Gradient is installed, and the program waits for
-Commodities messages. `Run >NIL:` detaches it from the Shell so the
-prompt comes back immediately.
-
-If you put `Gradient` somewhere else, change the path
-(`Run >NIL: SYS:Utilities/Gradient BACKGROUND`).
-
-### 4.2 Use Commodities Exchange to control it
+## 4. Control via Commodities Exchange
 
 Run `Tools/Commodities/Exchange` (or wherever your WB has the Exchange
 program). You'll see `Gradient` listed alongside any other commodities
@@ -173,24 +152,28 @@ you have running (Blanker, AutoPoint, etc.). The standard buttons:
 | **Disable** | Detach the copperlist; Workbench's normal palette returns (broker stays). |
 | **Remove** | Quit Gradient entirely. The broker is removed from Exchange. |
 
-Same effect from a Shell, since launching `Gradient` again sends the
-running broker a `UNIQUE` notification — that's wired to **Show** in our
-broker, so just typing:
-
-```
-Gradient
-```
-
-…pops the editor on top of an already-running broker.
-
-### 4.3 Custom prefs file
+### 4.1 Custom prefs file
 
 ```
 Gradient LOAD=DH0:my-presets/blue-Gradient.prefs
 Gradient BACKGROUND LOAD=DH0:my-presets/blue-Gradient.prefs
 ```
 
-Useful for keeping multiple presets and switching by command line.
+Useful for keeping multiple presets and switching by command line. As a
+Tool Type on a `WBStartup/Gradient` icon, the same `LOAD=…` line picks
+the preset at boot.
+
+### 4.2 CLI alternative to WBStartup
+
+If you'd rather start it from `S:User-Startup` than `WBStartup/`, add:
+
+```
+Run >NIL: C:Gradient BACKGROUND
+```
+
+`Run >NIL:` detaches it from the Shell; `BACKGROUND` skips opening the
+editor window. Adjust the path if `Gradient` lives somewhere other than
+`C:`.
 
 ---
 
@@ -209,23 +192,13 @@ Long answer:
   re-merges its copperlists, sees our `UCopList` still attached, and
   the Gradient is back. We do nothing.
 - If the game does a hard reboot (some old slaves do), the daemon dies
-  with everything else — `User-Startup` re-launches it on the next boot.
+  with everything else — `WBStartup/` re-launches it on the next boot.
 - Our task runs at priority **−1**, so even when the broker is awake it
   never competes with foreground apps for CPU.
 
 ---
 
-## 6. Files in scope
-
-- `ENV:Gradient.prefs` — written on Save (editor); binary, ~290 bytes.
-- `ENVARC:Gradient.prefs` — same content; survives reboot. The system
-  copies `ENVARC:` → `ENV:` early during boot before `User-Startup` runs.
-- Public commodity broker `Gradient` — exists while the program is
-  running; visible in Exchange.
-
----
-
-## 7. Build (host side, Linux + vbcc)
+## 6. Build (host side, Linux + vbcc)
 
 If the cross-toolchain is already installed under `./toolchain/`:
 
@@ -243,7 +216,7 @@ If you're starting from a fresh clone (`toolchain/` is gitignored), see
 
 ---
 
-## 8. Troubleshooting
+## 7. Troubleshooting
 
 - **The editor window doesn't appear when I run `Gradient` from Shell.** —
   Look at Workbench. The Gradient should be visible. The window may have
