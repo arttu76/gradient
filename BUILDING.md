@@ -130,3 +130,21 @@ Copy `Gradient` to the Amiga (CF, ADF, serial, fs-uae shared folder, ...).
 - Upstream URLs occasionally drift. If `phoenix.owl.de` or
   `sun.hasenbraten.de` is down, try Aminet:
   `aminet.net/dev/c/vbcc_bin_amigaos68k.lha` and equivalents.
+
+## 5. macOS adjustments
+
+The toolchain builds and runs fine on macOS (tested on Apple Silicon)
+with three small substitutions in step 2:
+
+- **`lhasa` package** — does not exist on macOS. Install `lha` instead,
+  e.g. `brew install lha`. The `lha` command itself is invoked the same
+  way as on Linux.
+- **`cp -rn ndk/Include_H/* targets/.../include/`** — BSD `cp` does not
+  accept `-n`. Use `cp -R ndk/Include_H/ targets/m68k-amigaos/include/`
+  (the trailing slash on the source merges contents).
+- **`sed -i ...`** — GNU `sed` accepts `-i` with no argument; BSD `sed`
+  requires an empty backup-suffix string. Replace `sed -i` with
+  `sed -i ''` in the patch loop.
+
+Everything else (the `wget` URLs, the `make` invocations, the directory
+layout) is portable. Xcode Command Line Tools provide the host compiler.

@@ -36,9 +36,22 @@ copy Gradient SYS:Tools/Commodities/
 copy SYS:Tools/Commodities/Blanker.info SYS:Tools/Commodities/Gradient.info
 ```
 
-That's it for the install. (The first line copies the executable into
-the Commodities drawer; the second borrows Blanker's icon as a template
-for `Gradient`.)
+That's it for the install.
+
+The first line copies the executable into the Commodities drawer.
+
+The second line gives `Gradient` an icon by reusing `Blanker.info`.
+Workbench needs an `.info` file next to an executable to display it on
+the desktop, and rather than ship a custom one, `Gradient` borrows the
+icon already used by `Blanker` — another commodity that ships with
+every standard Workbench 3.x install (the screen-blanker found in
+`SYS:Tools/Commodities/`). Reusing it has two upsides: no extra file to
+ship, and the icon already carries `WBStartup`-friendly tooltypes that
+`Gradient` understands (`DONOTWAIT`, etc.). The visual is just
+`Blanker`'s icon; the program behind it is `Gradient`. If `Blanker.info`
+is missing on your install, copy any other `.info` from
+`SYS:Tools/Commodities/` (e.g. `AutoPoint.info`, `ClickToFront.info`)
+the same way.
 
 Now from Workbench:
 

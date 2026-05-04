@@ -194,9 +194,9 @@ static void interp_at(struct ColorState *cs, LONG screen_h, UWORD line,
         b16 = (LONG)cs->stops[0].b << 4;
     } else if (y_pct >= cs->stops[cs->count - 1].y) {
         UWORD k = cs->count - 1;
-        r16 = (LONG)cs->stops[k].r << 6;
-        g16 = (LONG)cs->stops[k].g << 6;
-        b16 = (LONG)cs->stops[k].b << 6;
+        r16 = (LONG)cs->stops[k].r << 4;
+        g16 = (LONG)cs->stops[k].g << 4;
+        b16 = (LONG)cs->stops[k].b << 4;
     } else {
         for (i = 1; i < cs->count; i++) {
             if (y_pct <= cs->stops[i].y) {
@@ -341,14 +341,24 @@ static void attach(struct ViewPort *vp, struct UCopList *ucl)
     RethinkDisplay();
 }
 
+/* Swap the viewport's user-copperlist atomically: graphics.library is
+ * given the new list, RethinkDisplay re-merges, and we wait one TOF so
+ * the hardware has switched off `old` before we free it. Going via
+ * detach() (UCopIns = NULL between lists) would briefly drop the
+ * gradient and flash the default Workbench palette on every slider
+ * drag; this path keeps the previous frame visible until the new one
+ * is live. */
 static struct UCopList *refresh_copper(struct ViewPort *vp,
                                        struct UCopList *old,
                                        LONG screen_h)
 {
     struct UCopList *fresh = build_copperlist(screen_h);
-    detach(vp);
+    Forbid();
+    vp->UCopIns = fresh;
+    Permit();
+    RethinkDisplay();
+    WaitTOF();
     if (old) free_ucoplist(old);
-    if (fresh) attach(vp, fresh);
     return fresh;
 }
 
@@ -370,10 +380,8 @@ static char stop_labels[MAX_STOPS][STOP_LABEL_LEN];
 /* Track which optional gadgets are currently in the window's gadget list,
  * so we can show/hide them with AddGadget/RemoveGadget. */
 static BOOL stop_in_win[MAX_STOPS];
-static BOOL add_before_in_win;
-static BOOL add_after_in_win;
 
-static char *reg_labels[] = {
+static const char *reg_labels[] = {
     "Color 0 (background)",
     "Color 1 (text)",
     "Color 2 (border)",
@@ -403,6 +411,20 @@ static void show_about(struct Window *win)
     es.es_StructSize    = sizeof(es);
     es.es_Flags         = 0;
     es.es_Title         = (UBYTE *)"About Gradient";
+    es.es_TextFormat    = (UBYTE *)body;
+    es.es_GadgetFormat  = (UBYTE *)"OK";
+    EasyRequestArgs(win, &es, NULL, NULL);
+}
+
+/* Modal error requester. `win` may be NULL — the requester then opens
+ * on the default public screen, which matters when we have to report a
+ * failure that prevented the editor window from opening at all. */
+static void show_error(struct Window *win, const char *body)
+{
+    struct EasyStruct es;
+    es.es_StructSize    = sizeof(es);
+    es.es_Flags         = 0;
+    es.es_Title         = (UBYTE *)"Gradient";
     es.es_TextFormat    = (UBYTE *)body;
     es.es_GadgetFormat  = (UBYTE *)"OK";
     EasyRequestArgs(win, &es, NULL, NULL);
@@ -609,7 +631,8 @@ static void handle_gadget_event(struct Gadget *g, UWORD code,
                                      (LONG)sp->y) / 2);
                 for (i = cs->count; i > insert_at; i--)
                     cs->stops[i] = cs->stops[i - 1];
-                cs->stops[insert_at]   = cs->stops[curr_stop + 1];
+                /* Shift loop already left a copy of the original stop at
+                 * insert_at; we just relocate it to new_y. */
                 cs->stops[insert_at].y = new_y;
                 cs->count++;
                 /* The stop the user was editing has shifted up by one;
@@ -684,11 +707,31 @@ struct ConfigFile {
     struct ColorState colors[NCOLORS];
 };
 
+/* Sanitize a freshly-loaded ColorState. The on-disk format is just a
+ * binary blob anyone could hand-edit, so clamp every field into its
+ * documented range before we feed it to interp_at / build_copperlist —
+ * an out-of-range count or y would walk past the stops[] array. */
+static void sanitize_color_state(struct ColorState *cs)
+{
+    UWORD i;
+    if (cs->count > MAX_STOPS) cs->count = MAX_STOPS;
+    if (cs->count < MIN_STOPS) cs->count = MIN_STOPS;
+    cs->dither    = (cs->dither    != 0) ? 1 : 0;
+    cs->direction = (cs->direction != 0) ? DIR_REVERSED : DIR_NORMAL;
+    for (i = 0; i < cs->count; i++) {
+        if (cs->stops[i].y > 100) cs->stops[i].y = 100;
+        if (cs->stops[i].r > 15)  cs->stops[i].r = 15;
+        if (cs->stops[i].g > 15)  cs->stops[i].g = 15;
+        if (cs->stops[i].b > 15)  cs->stops[i].b = 15;
+    }
+}
+
 static BOOL load_config(STRPTR path)
 {
     BPTR fh;
     struct ConfigFile cf;
     LONG n;
+    int  i;
 
     fh = Open(path, MODE_OLDFILE);
     if (!fh) return FALSE;
@@ -697,6 +740,7 @@ static BOOL load_config(STRPTR path)
     if (n != (LONG)sizeof(cf))    return FALSE;
     if (cf.magic   != CONFIG_MAGIC)   return FALSE;
     if (cf.version != CONFIG_VERSION) return FALSE;
+    for (i = 0; i < NCOLORS; i++) sanitize_color_state(&cf.colors[i]);
     memcpy(cstate, cf.colors, sizeof(cstate));
     return TRUE;
 }
@@ -721,44 +765,43 @@ static BOOL save_config(STRPTR path)
 
 /* Persist to both the live (ENV:) and archived (ENVARC:) locations -- the
  * Amiga prefs convention. ENV: is what the next launch reads; ENVARC: is
- * what S:Startup-Sequence copies back into ENV: after a reboot. */
-static void save_prefs_pair(void)
+ * what S:Startup-Sequence copies back into ENV: after a reboot. Returns
+ * TRUE only if both files were written; the caller surfaces failure via
+ * a requester. */
+static BOOL save_prefs_pair(void)
 {
-    save_config(CONFIG_PATH_LIVE);
-    save_config(CONFIG_PATH_SAVE);
+    BOOL live = save_config(CONFIG_PATH_LIVE);
+    BOOL arc  = save_config(CONFIG_PATH_SAVE);
+    return live && arc;
 }
 
 /* ----------------------------------------------- CLI args */
 
 struct CliArgs {
     LONG   background;
-    LONG   quit;
     STRPTR load_path;
 };
 
 static struct RDArgs *cli_rdargs = NULL;
-static LONG           cli_argbuf[3];
+static LONG           cli_argbuf[2];
 
 static void parse_cli(struct CliArgs *out)
 {
     out->background = 0;
-    out->quit       = 0;
     out->load_path  = NULL;
 
     cli_argbuf[0] = 0;
     cli_argbuf[1] = 0;
-    cli_argbuf[2] = 0;
 
     /* No template parse if we were launched from Workbench (no argv).
      * vbcc's startup detects WB launch and presents argc==0, but
      * dos.library's pr_CLI being NULL is the canonical check. */
     if (((struct Process *)FindTask(NULL))->pr_CLI == 0) return;
 
-    cli_rdargs = ReadArgs("BACKGROUND/S,QUIT/S,LOAD/K", cli_argbuf, NULL);
+    cli_rdargs = ReadArgs("BACKGROUND/S,LOAD/K", cli_argbuf, NULL);
     if (cli_rdargs) {
         out->background = cli_argbuf[0];
-        out->quit       = cli_argbuf[1];
-        out->load_path  = (STRPTR)cli_argbuf[2];
+        out->load_path  = (STRPTR)cli_argbuf[1];
     }
 }
 
@@ -851,8 +894,6 @@ static void close_editor_window(void)
         g_glist = NULL;
     }
     for (i = 0; i < MAX_STOPS; i++) stop_in_win[i] = FALSE;
-    add_before_in_win = FALSE;
-    add_after_in_win  = FALSE;
     editor_open = FALSE;
 }
 
@@ -1038,7 +1079,6 @@ static BOOL open_editor_window(void)
             ng.ng_GadgetID   = GID_ADD_BEFORE;
             gw_add_before = CreateGadget(BUTTON_KIND, prev_gad, &ng, TAG_END);
             prev_gad = gw_add_before;
-            add_before_in_win = TRUE;
 
             x += bw + 8;
             ng.ng_LeftEdge   = x;
@@ -1053,7 +1093,6 @@ static BOOL open_editor_window(void)
             ng.ng_GadgetID   = GID_ADD_AFTER;
             gw_add_after = CreateGadget(BUTTON_KIND, prev_gad, &ng, TAG_END);
             prev_gad = gw_add_after;
-            add_after_in_win = TRUE;
 
             y += bh + 6;
         }
@@ -1229,12 +1268,20 @@ static BOOL drain_editor_messages(struct UCopList **ucl)
  * disposition to the safe default for next time. */
 static void apply_disposition(struct UCopList **ucl)
 {
+    BOOL ok = TRUE;
     switch (exit_disposition) {
         case EXIT_SAVE:
-            save_prefs_pair();
+            ok = save_prefs_pair();
+            if (!ok) show_error(gw_win,
+                "Could not write Gradient preferences.\n"
+                "Check that ENV: and ENVARC: are mounted\n"
+                "and writable.");
             break;
         case EXIT_USE:
-            save_config(CONFIG_PATH_LIVE);
+            ok = save_config(CONFIG_PATH_LIVE);
+            if (!ok) show_error(gw_win,
+                "Could not write ENV:Gradient.prefs.\n"
+                "Check that ENV: is mounted and writable.");
             break;
         case EXIT_CANCEL:
         default:
@@ -1261,14 +1308,6 @@ int main(void)
     init_state();
     parse_cli(&cli);
     parse_wb_tooltypes(&cli);   /* no-op if launched from CLI */
-
-    if (cli.quit) {
-        /* Killing a running broker from another process needs the
-         * Exchange utility (or an external CX-aware tool); we don't
-         * implement that here. Document in README. */
-        free_cli();
-        return 0;
-    }
 
     /* Load config: explicit path > ENV: > built-in defaults. */
     if (cli.load_path) load_config(cli.load_path);
@@ -1320,7 +1359,12 @@ int main(void)
     }
     ActivateCxObj(cx_broker, 1);
 
-    if (!cli.background) (void)open_editor_window();
+    if (!cli.background) {
+        if (!open_editor_window()) show_error(NULL,
+            "Could not open the Gradient editor window.\n"
+            "The broker is still active in Commodities Exchange;\n"
+            "try Show again from there to retry.");
+    }
 
     /* Main loop: react to commodities and (when open) editor events. */
     while (!done) {
@@ -1368,8 +1412,12 @@ int main(void)
                         break;
                     case CXCMD_APPEAR:
                     case CXCMD_UNIQUE:
-                        if (!editor_open) (void)open_editor_window();
-                        else if (gw_win)  WindowToFront(gw_win);
+                        if (!editor_open) {
+                            if (!open_editor_window()) show_error(NULL,
+                                "Could not open the Gradient editor window.");
+                        } else if (gw_win) {
+                            WindowToFront(gw_win);
+                        }
                         break;
                     case CXCMD_DISAPPEAR:
                         if (editor_open) {
