@@ -909,6 +909,16 @@ static BOOL open_editor_window(void)
 
     if (editor_open) return TRUE;
 
+    /* Default the color selector to the first register the user has
+     * enabled -- saves a click in the common case where only one
+     * register is being driven (often Color 3). Falls back to 0 if
+     * nothing is enabled. */
+    curr_reg = 0;
+    for (i = 0; i < NCOLORS; i++) {
+        if (cstate[i].enabled) { curr_reg = i; break; }
+    }
+    curr_stop = 0;
+
     /* Snapshot current state so Cancel can revert. */
     snapshot_state();
 
@@ -1332,12 +1342,14 @@ int main(void)
     g_vi = GetVisualInfo(g_scr, TAG_END);
     if (!g_vi) { rc = 10; goto cleanup; }
 
-    ucl = build_copperlist(g_scr->Height);
-    if (ucl) attach(&g_scr->ViewPort, ucl);
-
-    /* Register with Commodities Exchange. NBU_UNIQUE rejects a second
-     * concurrent instance and notifies the existing broker via
-     * CXCMD_UNIQUE -- we use that to pop the editor window. */
+    /* Register with Commodities Exchange before touching the shared
+     * ViewPort. NBU_UNIQUE rejects a second concurrent instance and
+     * notifies the existing broker via CXCMD_UNIQUE -- which the
+     * running instance uses to pop its editor window. Doing this
+     * before build_copperlist/attach matters: if we lost the
+     * uniqueness race after attaching, our cleanup path's detach()
+     * would null out vp->UCopIns and leave the running instance
+     * visibly "disabled" until something rebuilt the copperlist. */
     cx_port = CreateMsgPort();
     if (!cx_port) { rc = 10; goto cleanup; }
 
@@ -1353,11 +1365,15 @@ int main(void)
     cx_broker = CxBroker(&nb, &cx_err);
     if (!cx_broker) {
         /* Duplicate -- the existing instance got CXCMD_UNIQUE and
-         * popped its window. We just exit. */
+         * popped its window. We just exit, having touched nothing
+         * shared. */
         rc = 0;
         goto cleanup;
     }
     ActivateCxObj(cx_broker, 1);
+
+    ucl = build_copperlist(g_scr->Height);
+    if (ucl) attach(&g_scr->ViewPort, ucl);
 
     if (!cli.background) {
         if (!open_editor_window()) show_error(NULL,

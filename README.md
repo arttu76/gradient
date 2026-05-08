@@ -18,6 +18,7 @@ disable/enable its effect, or remove it cleanly through the Exchange app.
 | File                              | What it is                              |
 | --------------------------------- | --------------------------------------- |
 | `Gradient`                        | The executable. Hunk format.            |
+| `Gradient.info`                   | Workbench icon, ships with `DONOTWAIT` and `BACKGROUND` tooltypes already set. |
 | `ENV:Gradient.prefs`              | Live settings (read at every launch). ~290 bytes binary. |
 | `ENVARC:Gradient.prefs`           | Persistent copy. The system copies `ENVARC:` → `ENV:` early in boot, before `User-Startup` runs. |
 | Public broker `"Gradient"`        | Created at runtime, listed in Exchange. |
@@ -29,81 +30,47 @@ when you click **Save** in the editor.
 
 ## 2. Install
 
-From a Shell:
+Drop both files into `SYS:WBStartup/`:
 
 ```
-copy Gradient SYS:Tools/Commodities/
-copy SYS:Tools/Commodities/Blanker.info SYS:Tools/Commodities/Gradient.info
+copy Gradient SYS:WBStartup/
+copy Gradient.info SYS:WBStartup/
 ```
 
-That's it for the install.
+(Workbench equivalent: drag the `Gradient` icon onto `WBStartup/`.)
 
-The first line copies the executable into the Commodities drawer.
+That's the whole install. The icon already has the two tooltypes that
+matter:
 
-The second line gives `Gradient` an icon by reusing `Blanker.info`.
-Workbench needs an `.info` file next to an executable to display it on
-the desktop, and rather than ship a custom one, `Gradient` borrows the
-icon already used by `Blanker` — another commodity that ships with
-every standard Workbench 3.x install (the screen-blanker found in
-`SYS:Tools/Commodities/`). Reusing it has two upsides: no extra file to
-ship, and the icon already carries `WBStartup`-friendly tooltypes that
-`Gradient` understands (`DONOTWAIT`, etc.). The visual is just
-`Blanker`'s icon; the program behind it is `Gradient`. If `Blanker.info`
-is missing on your install, copy any other `.info` from
-`SYS:Tools/Commodities/` (e.g. `AutoPoint.info`, `ClickToFront.info`)
-the same way.
+- **`DONOTWAIT`** — required for anything in `WBStartup/`; tells
+  Workbench not to wait for the program to exit before continuing boot.
+- **`BACKGROUND`** — Gradient starts silently, without popping the
+  editor window. (Without this, the editor would open at every boot.)
 
-Now from Workbench:
+Reboot once. Gradient is now running in the background on every boot.
 
-1. Open `SYS:Tools/Commodities/`. If the window was already open before
-   the `copy`, pick **Window → Update** so it re-reads the drawer.
-2. **Double-click `Gradient`**. The editor window opens.
-3. Configure your gradient (pick a color register, edit stops, etc.).
+### Configure your gradient
+
+1. Open `SYS:WBStartup/` on Workbench.
+2. **Double-click `Gradient`.** Because Gradient is already running,
+   the second launch is intercepted via Commodities `UNIQUE` semantics
+   and pops the editor window of the running instance — `BACKGROUND`
+   is ignored on this path, so you get the GUI even though the icon
+   has the tooltype set.
+3. Pick a color register, edit stops, etc.
 4. Click **Save**. Settings are written to `ENVARC:Gradient.prefs` and
    survive reboot.
 
-You can launch `Gradient` again from Commodities any time — Save is the
-only persistence step.
+To later disable autostart, drag the icon out of `SYS:WBStartup/`. To
+remove the running instance without rebooting, use Exchange → Remove
+(see [§4](#4-control-via-commodities-exchange)).
 
-### 2.1 Make it start at every boot
+### 2.1 Optional: install elsewhere
 
-Settings persist via Save, but Exchange itself doesn't remember which
-commodities should be running — only `SYS:WBStartup/` does that.
-After the basic install, do this once:
-
-1. From a Shell, copy both the executable and the icon into the
-   WBStartup drawer:
-   ```
-   copy SYS:Tools/Commodities/Gradient SYS:WBStartup/
-   copy SYS:Tools/Commodities/Gradient.info SYS:WBStartup/
-   ```
-   (Workbench equivalent: hold Shift and drag the `Gradient` icon
-   from `Tools/Commodities/` to `WBStartup/`. Shift = copy.)
-2. Open `SYS:WBStartup/` on Workbench (or pick **Window → Update**
-   if it was already open).
-3. Single-click the new `Gradient` icon, then **Icons → Information…**.
-4. In the **Tool Types** list, add these two lines:
-   ```
-   DONOTWAIT
-   BACKGROUND
-   ```
-   - `DONOTWAIT` is mandatory for anything in `WBStartup/` — it tells
-     Workbench not to wait for the program to exit before continuing
-     boot.
-   - `BACKGROUND` tells Gradient to skip the editor window at boot
-     and just install the gradient quietly. Without it, the editor
-     would pop up every time you log in.
-   - Optional: `LOAD=path/to/file.prefs` to start with a non-default
-     preset.
-5. **Save** the Information requester. Reboot.
-
-To verify, open `SYS:Tools/Commodities/Exchange` after the reboot —
-`Gradient` should appear with `Active = yes`. To later disable
-autostart, just drag the icon out of `SYS:WBStartup/`.
-
-The same recipe (Shift-drag plus `DONOTWAIT`) works for any other
-commodity (Blanker, ClickToFront, AutoPoint, …) you want auto-started
-at boot.
+`WBStartup/` is just a directory — there's no requirement to use it,
+and no requirement to keep `Gradient` in `SYS:Tools/Commodities/`
+either. If you want the executable on `C:` and autostart driven from
+`S:User-Startup`, see [§4.2](#42-cli-alternative-to-wbstartup).
 
 ---
 
