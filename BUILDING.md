@@ -114,7 +114,7 @@ file Gradient
 # -> Gradient: AmigaOS loadseg()ble executable/binary
 
 strings Gradient | grep '$VER:'
-# -> $VER: Gradient 1.0
+# -> $VER: Gradient 1.1
 ```
 
 Copy `Gradient` to the Amiga (CF, ADF, serial, fs-uae shared folder, ...).

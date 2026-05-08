@@ -41,11 +41,11 @@
 #define CONFIG_PATH_LIVE  "ENV:Gradient.prefs"
 #define CONFIG_PATH_SAVE  "ENVARC:Gradient.prefs"
 #define BROKER_NAME       "Gradient"
-#define BROKER_TITLE      "Gradient 1.0"
+#define BROKER_TITLE      "Gradient 1.1"
 #define BROKER_DESCR      "Workbench palette gradient"
 
 /* AmigaDOS Version cookie -- `Version Gradient` searches for "$VER:". */
-static const char version_cookie[] = "$VER: Gradient 1.0";
+static const char version_cookie[] = "$VER: Gradient 1.1";
 /* Force the linker to keep the cookie even though nothing else
  * references it at runtime. */
 const char * const _gradient_keep_vc = version_cookie;
@@ -405,7 +405,7 @@ static void show_about(struct Window *win)
 {
     struct EasyStruct es;
     static const char body[] =
-        "Gradient 1.0\n\n"
+        "Gradient 1.1\n\n"
         "Copper-driven gradient editor for Workbench 3.x.\n\n"
         "https://solvalou.com/gradient";
     es.es_StructSize    = sizeof(es);
