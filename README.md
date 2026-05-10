@@ -93,7 +93,8 @@ copperlist.
 
 ### Controls
 
-- **Color**: which Workbench color register (0..3) you're editing.
+- **Color**: which Workbench color register (0..3) you're editing. (See
+  [§5](#5-color-depth--the-4-register-limit) for why only 0..3.)
 - **Enabled**: turn the copper override on/off for this register.
 - **Dither**: ordered vertical dithering; hides 4-bit-per-channel
   step boundaries. On by default.
@@ -157,7 +158,35 @@ editor window. Adjust the path if `Gradient` lives somewhere other than
 
 ---
 
-## 5. Coexistence with games and demos (WHDLoad etc.)
+## 5. Color depth & the 4-register limit
+
+Gradient always animates Workbench color registers **0..3**, regardless of
+how many colors your Workbench screen is set to.
+
+Why those four: on every standard Workbench, registers 0..3 are the
+chrome — background, text, dark window border, light window edge — and
+nothing else owns them. Registers 4+ on a deeper Workbench belong to app
+icon palettes and GUI toolkits (MUI, ReAction skins); driving them from a
+copperlist would smear unrelated UI mid-screen.
+
+What happens at each depth:
+
+- **2-color WB**: only registers 0..1 are displayed. Any gradient you
+  configure on registers 2..3 is still emitted by the copper but isn't
+  visible. Harmless.
+- **4-color WB**: the design target — all four registers are visible.
+- **8 / 16 / 32-color WB, or AGA 256**: the same four chrome registers
+  are animated; the rest stay flat at their normal Workbench colors.
+
+Hardware footnote: the Copper itself can write all 32 ECS color registers
+(or 256 on AGA). The 4-register cap is a deliberate UX choice, not a
+copperlist limitation. RGB precision is 4-bit-per-channel (ECS 12-bit
+`$0RGB` format, see `pack_dither()` in `gradient.c`) on every platform —
+AGA users won't see extra color depth in gradients.
+
+---
+
+## 6. Coexistence with games and demos (WHDLoad etc.)
 
 Short answer: **fine — the broker is fully passive while a game runs and
 your Gradient resumes automatically when the game exits.**
@@ -178,7 +207,7 @@ Long answer:
 
 ---
 
-## 6. Build (host side, Linux + vbcc)
+## 7. Build (host side, Linux + vbcc)
 
 If the cross-toolchain is already installed under `./toolchain/`:
 
@@ -196,7 +225,7 @@ If you're starting from a fresh clone (`toolchain/` is gitignored), see
 
 ---
 
-## 7. Troubleshooting
+## 8. Troubleshooting
 
 - **The editor window doesn't appear when I run `Gradient` from Shell.** —
   Look at Workbench. The Gradient should be visible. The window may have
